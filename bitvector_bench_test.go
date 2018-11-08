@@ -18,6 +18,15 @@ func BenchmarkRank(b *testing.B) {
 	b.StopTimer()
 }
 
+func BenchmarkSelect(b *testing.B) {
+	_, bv := random(bigSize)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		bv.Select(rand.Intn(bigSize), itoB(rand.Intn(2)))
+	}
+	b.StopTimer()
+}
+
 func BenchmarkGet(b *testing.B) {
 	_, bv := random(bigSize)
 	b.ResetTimer()

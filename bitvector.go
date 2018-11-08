@@ -14,10 +14,12 @@ const (
 var (
 	// ErrorOutOfRange indicates out of range access.
 	ErrorOutOfRange = errors.New("Out of range access")
+	// ErrorNotExist indicates not exist.
+	ErrorNotExist = errors.New("Not exist")
 )
 
 type BitVector struct {
-	size uint
+	size uint     // size of the bit vector.
 	rank []uint   // the vector of the number of 1s in the bit vector pers BitLength.
 	v    []uint64 // the bit vector
 }
@@ -38,17 +40,9 @@ func (b BitVector) Get(i uint) (bool, error) {
 // Rank returns the count of 1s or 0s before the i-th bit.
 func (b BitVector) Rank(i uint, x bool) (uint, error) {
 	if x {
-		val, err := b.Rank1(i)
-		if err != nil {
-			return uint(0), err
-		}
-		return val, nil
+		return b.Rank1(i)
 	}
-	val, err := b.Rank0(i)
-	if err != nil {
-		return uint(0), err
-	}
-	return val, nil
+	return b.Rank0(i)
 }
 
 // Rank1 returns the count of 1s before the i-th bit.
@@ -67,6 +61,52 @@ func (b BitVector) Rank0(i uint) (uint, error) {
 		return 0, err
 	}
 	return i - val, nil
+}
+
+// Select1 returns the index of the i-th 1.
+func (b BitVector) Select1(i uint) (uint, error) {
+	return b.binarySearch(i, true)
+}
+
+// Select0 returns the index of the i-th 0.
+func (b BitVector) Select0(i uint) (uint, error) {
+	return b.binarySearch(i, false)
+}
+
+func (b BitVector) binarySearch(t uint, x bool) (uint, error) {
+	if x {
+		v, _ := b.Rank1(b.size)
+		if v > t {
+			return t, ErrorNotExist
+		}
+	} else {
+		v, _ := b.Rank0(b.size)
+		if v > t {
+			return t, ErrorNotExist
+		}
+	}
+
+	low, high := uint(0), b.size+1
+	for high-low > 1 {
+		mid := (high + low) / 2
+
+		if x {
+			v, _ := b.Rank1(mid)
+			if v >= t {
+				high = mid
+			} else {
+				low = mid
+			}
+		} else {
+			v, _ := b.Rank0(mid)
+			if v >= t {
+				high = mid
+			} else {
+				low = mid
+			}
+		}
+	}
+	return uint(high), nil
 }
 
 // Builder is a builder of BitVector.
