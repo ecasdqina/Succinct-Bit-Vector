@@ -2,6 +2,7 @@ package bitvector
 
 import (
 	"errors"
+	"fmt"
 )
 
 const (
@@ -21,14 +22,21 @@ var (
 )
 
 type BitVector struct {
-	size int      // size of the bit vector.
-	rank []int    // the vector of the number of 1s in the bit vector pers BitLength.
-	v    []uint64 // the bit vector
+	size       int      // size of the bit vector.
+	log        int      // log_2(size).
+	logSquared int      // log_2(size) squared.
+	rank       []int    // the vector of the number of 1s in the bit vector pers log squeared.
+	v          []uint64 // the bit vector.
 }
 
 // Len returns the size of the bit vector.
 func (b BitVector) Len() int {
 	return b.size
+}
+
+// Log returns log_2(size).
+func (b BitVector) Log() int {
+	return b.log
 }
 
 // Get returns true or false, the value of the i-th bit in the bit vector.
@@ -52,8 +60,23 @@ func (b BitVector) Rank1(i int) (int, error) {
 	if i > b.size {
 		return 0, ErrorOutOfRange
 	}
-	offset := uint(i % bitLength)
-	return b.rank[i/bitLength] + popcount(b.v[i/bitLength] & ^(maskFF<<offset)), nil
+
+	ret, begin := b.rank[i/b.logSquared], i/b.logSquared*b.logSquared
+	if (begin/bitLength)*bitLength <= begin && i <= (begin/bitLength+1)*bitLength {
+		x := b.v[begin/bitLength]
+		x &= maskFF << uint(begin-begin/bitLength*bitLength)
+		x &= maskFF >> uint((begin/bitLength+1)*bitLength-i)
+		return ret + popcount(x), nil
+	}
+	if (begin/bitLength+1)*bitLength-begin > 0 {
+		offset := (begin/bitLength+1)*bitLength - begin
+		ret += popcount(b.v[begin/bitLength] & ^(maskFF >> uint(offset%bitLength)))
+		begin += offset
+	}
+	for ; begin+bitLength < i; begin += bitLength {
+		ret += popcount(b.v[begin/bitLength])
+	}
+	return ret + popcount(b.v[begin/bitLength] & ^(maskFF<<uint(i%bitLength))), nil
 }
 
 // Rank0 return the count of 0s before the i-th bit.
@@ -165,18 +188,49 @@ func (b Builder) Get(i int) bool {
 
 // Build builds a BitVector from the builder.
 func (b Builder) Build() *BitVector {
-	rank := make([]int, len(b.v))
-	count := 0
-
-	for i, x := range b.v {
-		rank[i] = count
-		count += popcount(x)
+	log := 1
+	for (1 << uint(log)) <= b.size {
+		log++
 	}
 
+	rank := make([]int, b.size/(log*log)+1)
+	count := 0
+	for i := 0; i < len(rank); i++ {
+		rank[i] = count
+		if i == len(rank)-1 {
+			continue
+		}
+		begin, end := i*log*log, (i+1)*log*log
+
+		if (begin/bitLength)*bitLength <= begin && end <= (begin/bitLength+1)*bitLength {
+			x := b.v[begin/bitLength]
+			x &= maskFF << uint(begin-begin/bitLength*bitLength)
+			x &= maskFF >> uint((begin/bitLength+1)*bitLength-end)
+			count += popcount(x)
+			continue
+		}
+		if (begin/bitLength+1)*bitLength-begin > 0 {
+			offset := (begin/bitLength+1)*bitLength - begin
+			count += popcount(b.v[begin/bitLength] & ^(maskFF >> uint(offset%bitLength)))
+			begin += offset
+		}
+		for ; begin+bitLength < end; begin += bitLength {
+			count += popcount(b.v[begin/bitLength])
+		}
+		count += popcount(b.v[begin/bitLength] & ^(maskFF << uint(end%bitLength)))
+	}
+
+	for _, x := range rank {
+		fmt.Print(x, " ")
+	}
+	fmt.Println()
+
 	return &BitVector{
-		size: b.size,
-		v:    b.v,
-		rank: rank,
+		size:       b.size,
+		log:        log,
+		logSquared: log * log,
+		v:          b.v,
+		rank:       rank,
 	}
 }
 
